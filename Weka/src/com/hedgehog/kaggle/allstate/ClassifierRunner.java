@@ -39,6 +39,8 @@ public class ClassifierRunner {
 			test.deleteAttributeAt(WekaUtil.getAttributePosition(test, attributeToRemove));
 		}
 		*/
+		// Add a comment. 
+		
 		System.out.println(test.numAttributes());
 		
 		for (int i = 0; i < test.size(); i++) {

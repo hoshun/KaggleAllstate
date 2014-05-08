@@ -32,8 +32,7 @@ public class AllstateEvalution {
 	}
 	
 	public void evaluate (AllstateClassifier classifier, Instances test) {
-		List<Double[]> predictedAnswers = new ArrayList<Double[]>();
-		for (int i = 0;0)
+		List<Double[]> predictedAnswers = new ArrayList<Double[]>();		
 	}		
 	
 }
