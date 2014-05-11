@@ -34,7 +34,7 @@ public class Field {
 	 */
 	public static Field parseField(String data) {
 		String[] values = data.split(":", -1);
-		Preconditions.checkArgument(values.length == 2);
+		Preconditions.checkArgument(values.length == 2, "Invalid field value: %s", data);
 
 		return new Field(values[0].trim(), Type.parseType(values[1].trim()));
 	}

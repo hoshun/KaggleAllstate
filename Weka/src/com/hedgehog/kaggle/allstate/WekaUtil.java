@@ -1,7 +1,9 @@
 package com.hedgehog.kaggle.allstate;
 
+import java.util.ArrayList;
 import java.util.List;
 
+import weka.core.Attribute;
 import weka.core.Instance;
 import weka.core.Instances;
 
@@ -29,8 +31,18 @@ public class WekaUtil {
 			}
 			position++;
 		}
-		Preconditions.checkArgument(position < instances.numAttributes());
-		return position;
+
+		throw new IllegalArgumentException("Cannot find attribute name in instances." + attributeName);
+	}
+
+	public static int[] getAttributePositions(Instances instances, List<String> attributeNames) {
+		int[] indices = new int[attributeNames.size()];
+		int i = 0;
+		for (String attributeName : attributeNames) {
+			indices[i] = getAttributePosition(instances, attributeName);
+			i++;
+		}
+		return indices;
 	}
 
 	public static void deleteAttributes(Instances instances, List<String> attrNames) {
@@ -38,10 +50,18 @@ public class WekaUtil {
 			instances.deleteAttributeAt(WekaUtil.getAttributePosition(instances, attrName));
 		}
 	}
-	
+
 	public static void deleteAttributes(Instance instance, List<String> attrNames) {
 		for (String attrName : attrNames) {
 			instance.deleteAttributeAt(WekaUtil.getAttributePosition(instance, attrName));
 		}
+	}
+
+	public static String getNominalValue(Instance instance, String AttributeName) {
+		int indexOfAttribute = getAttributePosition(instance, AttributeName);
+		Attribute attribute = instance.attribute(indexOfAttribute);
+		double IDIndex = instance.value(attribute);
+		String value = attribute.value((int) IDIndex);
+		return value;
 	}
 }

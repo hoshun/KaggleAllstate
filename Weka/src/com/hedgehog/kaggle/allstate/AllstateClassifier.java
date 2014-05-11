@@ -1,8 +1,6 @@
 package com.hedgehog.kaggle.allstate;
 
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 
 import weka.classifiers.Classifier;
@@ -10,53 +8,58 @@ import weka.classifiers.bayes.NaiveBayes;
 import weka.core.Capabilities;
 import weka.core.Instance;
 import weka.core.Instances;
+import weka.filters.Filter;
+import weka.filters.unsupervised.instance.RemoveWithValues;
 
-import com.google.common.collect.Lists;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 
 public class AllstateClassifier implements Classifier {
 
-	/**
-	 * index 0 -> A index 1 -> B ...
-	 */
-	private Map<String, Classifier> purchasedOptionNameToClassifier;
+	private Map<String, Classifier> optionNameToClassifier;
+	private double minProb;
 
-	/**
-	 * @param args
-	 */
-	public static void main(String[] args) {
-	}
-
-	public AllstateClassifier() {
-		this.purchasedOptionNameToClassifier = Maps.newHashMap();
+	public AllstateClassifier(double minProb) {
+		this.minProb = minProb;
+		this.optionNameToClassifier = Maps.newHashMap();
+		for (String optionName : Plan.getOptionNames()) {
+			Classifier classifier = new NaiveBayes();
+			this.optionNameToClassifier.put(optionName, classifier);
+		}
 	}
 
 	@Override
 	public void buildClassifier(Instances train) throws Exception {
-		for (String purchasedOptionName : Plan.getPurchasedOptionNames()) {
-			Instances newTrain = new Instances(train);
+		Instances baseTrain = new Instances(train);
+		int planIndex = WekaUtil.getAttributePosition(baseTrain, Plan.PLAN_NAME);
+		int recordTypeIndex = WekaUtil.getAttributePosition(baseTrain, Plan.RECORD_TYPE);
 
-			for (String labelName : Plan.getPurchasedOptionNames()) {
-				if (labelName.equals(purchasedOptionName)) {
-					newTrain.setClass(newTrain.attribute(labelName));
-				} else {
-					newTrain.deleteAttributeAt(WekaUtil.getAttributePosition(newTrain, labelName));
-				}
-			}
+		// Set final option to missing value
+		for (Instance instance : baseTrain) {
+			instance.setMissing(planIndex);
+		}
 
+		// Filter non-purchase records.
+		RemoveWithValues filter = new RemoveWithValues();
+		// WARN: option index may start from 1 instead of 0.
+		String option = String.format("-C %s -L first", recordTypeIndex + 1);
+		filter.setInputFormat(baseTrain);
+		filter.setOptions(option.split("\\s+"));
+		System.out.println("before filter size " + baseTrain.size());
+		baseTrain = Filter.useFilter(baseTrain, filter);
+		System.out.println("after filter size " + baseTrain.size());
+
+		// Train sub-classifier for each option.
+		for (String optionName : Plan.getOptionNames()) {
+			Instances singleOptionTrain = new Instances(baseTrain);
+			int targetOptionIndex = WekaUtil.getAttributePosition(singleOptionTrain, optionName);
+
+			// Set the option as the 'class'.
+			singleOptionTrain.setClassIndex(targetOptionIndex);
 			NaiveBayes classifier = new NaiveBayes();
-			classifier.buildClassifier(newTrain);
-
-			purchasedOptionNameToClassifier.put(purchasedOptionName, classifier);
+			classifier.buildClassifier(singleOptionTrain);
+			optionNameToClassifier.put(optionName, classifier);
 		}
-	}
-
-	private static double doubleArrayToDouble(double[] array, int magicNumber) {
-		double num = magicNumber;
-		for (int i = 0; i < array.length; i++) {
-			num = num * 10 + array[i];
-		}
-		return num;
 	}
 
 	private static int indexOfMaxValue(double[] array) {
@@ -71,64 +74,57 @@ public class AllstateClassifier implements Classifier {
 		return maxIndex;
 	}
 
-	// NOT FINISHED: Please see the comment below
 	@Override
 	public double classifyInstance(Instance instance) throws Exception {
-
-		// Remove labels
-		// WekaUtil.deleteAttributes(instance, Plan.getPurchasedOptionNames());
-		// WekaUtil.deleteAttributes(instance, Plan.getViewedOptionNames());
+		int planIndex = WekaUtil.getAttributePosition(instance, Plan.PLAN_NAME);
+		String planValue = WekaUtil.getNominalValue(instance, Plan.PLAN_NAME);
+		instance.setMissing(planIndex);
 
 		Plan.Builder builder = new Plan.Builder();
-		for (String purchasedOptionName : Plan.getPurchasedOptionNames()) {
-			Classifier classifier = purchasedOptionNameToClassifier.get(purchasedOptionName);
+		for (String optionName : Plan.getOptionNames()) {
+			Classifier classifier = optionNameToClassifier.get(optionName);
+
+			// WARNING: altering the class index of the instances.
+			instance.dataset().setClassIndex(WekaUtil.getAttributePosition(instance, optionName));
 			double[] probs = classifier.distributionForInstance(instance);
 
 			int maxIndex = indexOfMaxValue(probs);
-			if (probs[maxIndex] > 0.9) {
-				// Is is assumed that the label values start from 0?
-				// Otherwise, how do we map the index in probs to a label?
-				// We may need to rewrite the final options so it starts from 0...
-				// builder.set(purchasedOptionName, value);
-				double label = classifier.classifyInstance(instance);
-				builder.set(purchasedOptionName, (int) label);
+			if (probs[maxIndex] > this.minProb) {
+				double labelIndex = classifier.classifyInstance(instance); // This is the index of the label, not the
+																			// nominal value
+				String label = instance.classAttribute().value((int) labelIndex);
+				builder.set(optionName, Integer.parseInt(label));
 			} else {
-				// Let's do a stupid hack and assume purchased and viewed options share the same order.
-				String viewedOptionName = Plan.getViewedOptionNames().get(
-						Collections.binarySearch(Plan.getPurchasedOptionNames(), purchasedOptionName));
-				double viewedOptionValue = instance.value(WekaUtil.getAttributePosition(instance, viewedOptionName));
-				builder.set(purchasedOptionName, (int) viewedOptionValue);
+				String value = WekaUtil.getNominalValue(instance, optionName);
+				builder.set(optionName, Integer.parseInt(value));
 			}
 		}
+
+		// Reset the class index of its dataset.
+		instance.dataset().setClassIndex(WekaUtil.getAttributePosition(instance, Plan.PLAN_NAME));
+
+		instance.setClassValue(planValue);
 		Plan plan = builder.build();
 		return plan.encodeToDouble();
-
-		// double[] answer = new double[this.labelToClassifier.size()];
-		// for(int cIndex = 0; cIndex < this.labelToClassifier.size(); cIndex++) {
-		// String optionName = Plan.getViewedOptionNames().get(cIndex);
-		// double trainLabel = instance.value(instance.attribute(WekaUtil.getAttributePosition(instance,
-		// optionName)));
-		//
-		// Classifier classifier = this.labelToClassifier.get(cIndex);
-		// double[] prob = classifier.distributionForInstance(instance);
-		// int maxIndex = indexOfMaxValue(prob);
-		// if (prob[maxIndex] > 0.9) {
-		// answer[cIndex] = classifier.classifyInstance(instance);
-		// } else {
-		// answer[cIndex] = trainLabel;
-		// }
-		// }
-		// return doubleArrayToDouble(answer, 9);
 	}
 
 	@Override
 	public double[] distributionForInstance(Instance instance) throws Exception {
-		return null;
+		throw new IllegalAccessError("Not implemented.");
 	}
 
 	@Override
 	public Capabilities getCapabilities() {
-		return this.purchasedOptionNameToClassifier.get(0).getCapabilities();
+		return this.optionNameToClassifier.get(0).getCapabilities();
 	}
 
+	/**
+	 * Back door method for testing.
+	 * 
+	 * @param minProb
+	 */
+	@Deprecated
+	public void setMinProb(double minProb) {
+		this.minProb = minProb;
+	}
 }

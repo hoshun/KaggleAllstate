@@ -21,13 +21,6 @@ public class DataTransformer {
 	
 	static {
 		newFields = Lists.newArrayList();
-		newFields.add(new Field("finalA", Type.NOMINAL));
-		newFields.add(new Field("finalB", Type.NOMINAL));
-		newFields.add(new Field("finalC", Type.NOMINAL));
-		newFields.add(new Field("finalD", Type.NOMINAL));
-		newFields.add(new Field("finalE", Type.NOMINAL));
-		newFields.add(new Field("finalF", Type.NOMINAL));
-		newFields.add(new Field("finalG", Type.NOMINAL));
 		newFields.add(new Field("finalOptions", Type.NOMINAL));
 	}
 
@@ -65,21 +58,14 @@ public class DataTransformer {
 			}
 
 			// Populate the output records with new fields.
-			outputRecord.set("finalA", purchaseRecord.get("A"));
-			outputRecord.set("finalB", purchaseRecord.get("B"));
-			outputRecord.set("finalC", purchaseRecord.get("C"));
-			outputRecord.set("finalD", purchaseRecord.get("D"));
-			outputRecord.set("finalE", purchaseRecord.get("E"));
-			outputRecord.set("finalF", purchaseRecord.get("F"));
-			outputRecord.set("finalG", purchaseRecord.get("G"));
 			Plan.Builder builder = new Plan.Builder();
-			builder.set("finalA:nominal", purchaseRecord.getInteger("A"));
-			builder.set("finalB:nominal", purchaseRecord.getInteger("B"));
-			builder.set("finalC:nominal", purchaseRecord.getInteger("C"));
-			builder.set("finalD:nominal", purchaseRecord.getInteger("D"));
-			builder.set("finalE:nominal", purchaseRecord.getInteger("E"));
-			builder.set("finalF:nominal", purchaseRecord.getInteger("F"));
-			builder.set("finalG:nominal", purchaseRecord.getInteger("G"));
+			builder.set("A:nominal", purchaseRecord.getInteger("A"));
+			builder.set("B:nominal", purchaseRecord.getInteger("B"));
+			builder.set("C:nominal", purchaseRecord.getInteger("C"));
+			builder.set("D:nominal", purchaseRecord.getInteger("D"));
+			builder.set("E:nominal", purchaseRecord.getInteger("E"));
+			builder.set("F:nominal", purchaseRecord.getInteger("F"));
+			builder.set("G:nominal", purchaseRecord.getInteger("G"));
 			Plan plan = builder.build();
 			outputRecord.set("finalOptions", String.valueOf(plan.encodeToDouble()));
 			
@@ -88,6 +74,55 @@ public class DataTransformer {
 		
 		return outputRecords;
 	}
+	
+	
+	
+	public List<CSVRecord> transformTestCustomerRecords(List<CSVRecord> customerRecords) {
+		if (outputSchema == null) {
+			// Construct output schema
+			Schema origSchema = customerRecords.get(0).getSchema();
+			List<Field> outputFields = Lists.newArrayList();
+			for (Field field : origSchema) {
+				outputFields.add(field);
+			}
+			outputFields.addAll(newFields);
+			outputSchema = new Schema(outputFields);
+		}
+
+		if (origSchema == null) {
+			origSchema = customerRecords.get(0).getSchema();
+		}
+
+		List<CSVRecord> outputRecords = Lists.newArrayList();
+
+		for (CSVRecord origRecord : customerRecords) {
+			CSVRecord outputRecord = new CSVRecord(outputSchema);
+			outputRecords.add(outputRecord);
+
+			// Populate the output records with original fields.
+			for (Field origField : origSchema) {
+				outputRecord.set(origField.getName(), origRecord.get(origField.getName()));
+			}
+
+			// Populate the output records with new fields.
+			Plan.Builder builder = new Plan.Builder();
+			builder.set("finalA:nominal", 0);
+			builder.set("finalB:nominal", 0);
+			builder.set("finalC:nominal", 0);
+			builder.set("finalD:nominal", 0);
+			builder.set("finalE:nominal", 0);
+			builder.set("finalF:nominal", 0);
+			builder.set("finalG:nominal", 0);
+			Plan plan = builder.build();
+			outputRecord.set("finalOptions", String.valueOf(plan.encodeToDouble()));
+			
+			unifyMissingValues(outputRecord, MISSING_VALUE);
+		}
+		
+		return outputRecords;
+	}
+	
+	
 
 	public List<CSVRecord> transform(List<CSVRecord> origRecords) {
 
@@ -95,6 +130,18 @@ public class DataTransformer {
 		Map<String, List<CSVRecord>> idToOrigRecords = groupRecordsByCustomerID(origRecords);
 		for (List<CSVRecord> customerRecords : idToOrigRecords.values()) {
 			outputRecords.addAll(transformCustomerRecords(customerRecords));
+		}
+
+		return outputRecords;
+	}
+
+	
+	public List<CSVRecord> transformTest(List<CSVRecord> origRecords) {
+
+		List<CSVRecord> outputRecords = Lists.newArrayList();
+		Map<String, List<CSVRecord>> idToOrigRecords = groupRecordsByCustomerID(origRecords);
+		for (List<CSVRecord> customerRecords : idToOrigRecords.values()) {
+			outputRecords.addAll(transformTestCustomerRecords(customerRecords));
 		}
 
 		return outputRecords;
